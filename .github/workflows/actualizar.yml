@@ -1,0 +1,30 @@
+name: Actualizador de Lista AceStream
+on:
+  schedule:
+    # 13:50 en España (CEST) es 11:50 en hora UTC
+    - cron: '50 11 * * *' 
+  workflow_dispatch: 
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repo
+        uses: actions/checkout@v3
+
+      - name: Descargar, Transformar y Limpiar
+        run: |
+          # 1. Descargar la lista desde IPFS
+          curl -L "https://ipfs.io/ipns/k51qzi5uqu5di462t7j4vu4akwfhvtjhy88qbupktvoacqfqe9uforjvhyi4wr/hashes.m3u" > temporal.m3u
+          
+          # 2. Reemplazar la IP local por la IP de tu NAS
+          # Cambiamos http://127.0.0.1:6878 por tu IP y el puerto que configuramos (8000)
+          sed 's|http://127.0.0.1:6878|http://192.168.18.197:6878|g' temporal.m3u > lista_nas.m3u
+
+      - name: Guardar cambios en GitHub
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add lista_nas.m3u
+          git commit -m "Lista actualizada automáticamente $(date +'%d-%m-%Y')" || exit 0
+          git push
