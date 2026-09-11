@@ -14,10 +14,31 @@ jobs:
 
       - name: Descargar, Transformar y Limpiar
         run: |
-          # 1. Descargar la lista desde el gateway dweb.link
-          curl -L "https://dweb.link/ipns/k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb/data/listas/lista_iptv.m3u" > temporal.m3u
-          
-          # 2. Reemplazar la IP local por la IP de tu NAS
+          # Pasarelas IPFS en formato de subdominio y alternativas
+          GATEWAYS=(
+            "https://k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb.ipns.dweb.link/data/listas/lista_iptv.m3u"
+            "https://k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb.ipns.w3s.link/data/listas/lista_iptv.m3u"
+            "https://gateway.pinata.cloud/ipns/k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb/data/listas/lista_iptv.m3u"
+          )
+
+          # Probar cada gateway hasta encontrar una lista válida
+          SUCCESS=0
+          for url in "${GATEWAYS[@]}"; do
+            echo "Probando gateway: $url"
+            curl -sL -A "Mozilla/5.0" "$url" > temporal.m3u
+            if grep -q "#EXT" temporal.m3u; then
+              echo "¡Descarga correcta desde $url!"
+              SUCCESS=1
+              break
+            fi
+          done
+
+          if [ $SUCCESS -eq 0 ]; then
+            echo "Error: Ningún gateway devolvió una lista válida."
+            exit 1
+          fi
+
+          # Reemplazar la IP local por la IP de tu NAS
           sed 's|http://127.0.0.1:6878|http://192.168.18.197:6878|g' temporal.m3u > lista_nas.m3u
 
       - name: Guardar cambios en GitHub
