@@ -14,29 +14,30 @@ jobs:
 
       - name: Descargar, Transformar y Limpiar
         run: |
-          # Lista de endpoints directos y gateways IPFS/IPNS
+          # Pasarelas optimizadas con cabeceras de API Trustless para evitar HTMLs
           URLS=(
-            "https://k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb.ipns.w3s.link/data/listas/lista_iptv.m3u"
-            "https://ipns.io/k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb/data/listas/lista_iptv.m3u"
-            "https://k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb.ipns.dweb.link/data/listas/lista_iptv.m3u"
-            "https://gateway.pinata.cloud/ipns/k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb/data/listas/lista_iptv.m3u"
+            "https://k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb.ipns.cf-ipfs.com/data/listas/lista_iptv.m3u"
+            "https://ipns.eth.ar.zone/k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb/data/listas/lista_iptv.m3u"
+            "https://ipfs.io/ipns/k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb/data/listas/lista_iptv.m3u"
+            "https://4everland.io/ipns/k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb/data/listas/lista_iptv.m3u"
           )
 
           SUCCESS=0
           for url in "${URLS[@]}"; do
             echo "Probando descarga desde: $url"
-            curl -sL --max-time 20 -H "Accept: text/plain, */*" -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "$url" > temporal.m3u || true
+            # Forzamos la cabecera Accept para pedir el archivo crudo y no HTML
+            curl -sL --max-time 20 -H "Accept: application/x-mpegurl, text/plain, */*" -A "Wget/1.21.3" "$url" > temporal.m3u || true
             
-            # Comprobar si el archivo contiene etiquetas M3U reales
+            # Verificamos si el archivo descargado contiene la cabecera de IPTV
             if grep -q "#EXT" temporal.m3u; then
-              echo "¡Descarga válida confirmada desde $url!"
+              echo "¡Lista M3U válida descargada con éxito desde $url!"
               SUCCESS=1
               break
             fi
           done
 
           if [ $SUCCESS -eq 0 ]; then
-            echo "Error: Ningún gateway ha devuelto una lista M3U válida."
+            echo "Error: Ninguna pasarela devolvió el archivo de lista M3U."
             exit 1
           fi
 
