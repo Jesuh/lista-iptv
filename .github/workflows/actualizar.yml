@@ -14,7 +14,9 @@ jobs:
 
       - name: Instalar cliente IPFS (Kubo)
         run: |
-          curl -sL -o kubo.tar.gz "https://dist.ipfs.tech/kubo/v0.27.0/kubo_v0.27.0_linux-amd64.tar.gz"
+          echo "Descargando Kubo con límite de tiempo..."
+          # --max-time 30 fuerza a que si en 30 segundos no descarga, cancele en vez de colgarse
+          curl -sL --max-time 30 -o kubo.tar.gz "https://dist.ipfs.tech/kubo/v0.27.0/kubo_v0.27.0_linux-amd64.tar.gz" || { echo "Error: La descarga de Kubo tardó demasiado."; exit 1; }
           tar -xzf kubo.tar.gz
           sudo bash kubo/install.sh
           ipfs init --offline
@@ -31,7 +33,7 @@ jobs:
           if timeout 25 ipfs cat "/ipns/$IPNS_KEY/data/listas/lista_iptv.m3u" > temporal.m3u; then
             echo "¡Descarga P2P completada!"
           else
-            echo "Aviso: Tiempo límite alcanzado."
+            echo "Aviso: Tiempo límite de P2P alcanzado."
           fi
 
           pkill ipfs || true
