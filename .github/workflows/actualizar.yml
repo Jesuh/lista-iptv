@@ -16,69 +16,58 @@ jobs:
         run: |
           python3 -c '
           import urllib.request
-          import json
+          import urllib.parse
           import time
 
           ipns_key = "k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb"
+          target_path = "/data/listas/lista_iptv.m3u"
           m3u_content = None
 
-          # 1. Intentar resolver el CID mediante la API oficial de IPFS
-          try:
-              api_url = f"https://ipfs.io/api/v0/name/resolve?arg={ipns_key}"
-              print(f"Resolviendo IPNS vía API: {api_url}")
-              req = urllib.request.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
-              with urllib.request.urlopen(req, timeout=15) as res:
-                  data = json.loads(res.read().decode())
-                  ipfs_path = data.get("Path") # Retorna /ipfs/Qm... o /ipfs/bafy...
-                  if ipfs_path:
-                      direct_url = f"https://ipfs.io{ipfs_path}/data/listas/lista_iptv.m3u"
-                      print(f"Descargando desde dirección inmutable: {direct_url}")
-                      d_req = urllib.request.Request(direct_url, headers={"User-Agent": "Mozilla/5.0"})
-                      with urllib.request.urlopen(d_req, timeout=15) as d_res:
-                          content = d_res.read().decode("utf-8", errors="ignore")
-                          if "#EXT" in content:
-                              m3u_content = content
-                              print("¡Descarga por CID inmutable exitosa!")
-          except Exception as e:
-              print(f"Aviso API IPFS: {e}")
+          # URLs directas de pasarelas IPFS
+          direct_urls = [
+              f"https://{ipns_key}.ipns.dweb.link{target_path}",
+              f"https://{ipns_key}.ipns.w3s.link{target_path}",
+              f"https://ipfs.io/ipns/{ipns_key}{target_path}"
+          ]
 
-          # 2. Si la API falla, probar pasarelas con cabeceras limpias
-          if not m3u_content:
-              gateways = [
-                  f"https://ipfs.io/ipns/{ipns_key}/data/listas/lista_iptv.m3u",
-                  f"https://4everland.io/ipns/{ipns_key}/data/listas/lista_iptv.m3u",
-                  f"https://eth.ar.zone/ipns/{ipns_key}/data/listas/lista_iptv.m3u",
-                  f"https://{ipns_key}.ipns.dweb.link/data/listas/lista_iptv.m3u"
-              ]
-              for url in gateways:
-                  try:
-                      print(f"Probando pasarela alternativa: {url}")
-                      time.sleep(1)
-                      req = urllib.request.Request(
-                          url, 
-                          headers={
-                              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                              "Accept": "*/*"
-                          }
-                      )
-                      with urllib.request.urlopen(req, timeout=15) as response:
-                          content = response.read().decode("utf-8", errors="ignore")
-                          if "#EXT" in content and "<html" not in content.lower():
-                              m3u_content = content
-                              print(f"¡Éxito desde {url}!")
-                              break
-                  except Exception as ex:
-                      print(f"Falló {url}: {ex}")
+          # Envolver las URLs en proxies públicos para evitar el bloqueo de IP de GitHub Actions
+          proxied_urls = []
+          for u in direct_urls:
+              proxied_urls.append(f"https://api.allorigins.win/raw?url={urllib.parse.quote(u)}")
+              proxied_urls.append(f"https://corsproxy.io/?{urllib.parse.quote(u)}")
+
+          # Combinar todos los intentos (primero directas, luego proxies)
+          all_attempts = direct_urls + proxied_urls
+
+          for url in all_attempts:
+              try:
+                  print(f"Probando descarga desde: {url}")
+                  req = urllib.request.Request(
+                      url, 
+                      headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+                  )
+                  with urllib.request.urlopen(req, timeout=12) as response:
+                      content = response.read().decode("utf-8", errors="ignore")
+                      # Validar que sea una lista m3u real y no una página de error o HTML
+                      if "#EXT" in content and "<html" not in content.lower():
+                          m3u_content = content
+                          print(f"¡Éxito rotundo descargando desde: {url}!")
+                          break
+                      else:
+                          print("El contenido recibido no es una lista M3U válida.")
+              except Exception as e:
+                  print(f"Falló este intento: {e}")
+              time.sleep(0.5)
 
           if not m3u_content:
-              raise RuntimeError("Error crítico: No se pudo obtener la lista M3U válida.")
+              raise RuntimeError("Error crítico: Ninguna pasarela ni proxy pudo obtener la lista M3U.")
 
           # Reemplazar la IP local por la IP de tu NAS
           m3u_modificado = m3u_content.replace("http://127.0.0.1:6878", "http://192.168.18.197:6878")
 
           with open("lista_nas.m3u", "w", encoding="utf-8") as f:
               f.write(m3u_modificado)
-          print("Archivo lista_nas.m3u actualizado correctamente.")
+          print("Archivo lista_nas.m3u procesado y guardado con éxito.")
           '
 
       - name: Guardar cambios en GitHub
