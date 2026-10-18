@@ -12,63 +12,38 @@ jobs:
       - name: Checkout del repo
         uses: actions/checkout@v4
 
-      - name: Descargar y Transformar con Python
+      - name: Instalar cliente IPFS (Kubo)
         run: |
-          python3 -c '
-          import urllib.request
-          import urllib.parse
-          import time
+          # Descargar e instalar la herramienta oficial de IPFS
+          wget -q https://dist.ipfs.tech/kubo/v0.27.0/kubo_v0.27.0_linux-amd64.tar.gz
+          tar -xzf kubo_v0.27.0_linux-amd64.tar.gz
+          sudo bash kubo/install.sh
+          ipfs init --offline
 
-          ipns_key = "k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb"
-          target_path = "/data/listas/lista_iptv.m3u"
-          m3u_content = None
+      - name: Descargar por red P2P y Transformar
+        run: |
+          IPNS_KEY="k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb"
+          
+          echo "Iniciando nodo IPFS local en segundo plano..."
+          ipfs daemon --offline &
+          sleep 3
 
-          # URLs directas de pasarelas IPFS
-          direct_urls = [
-              f"https://{ipns_key}.ipns.dweb.link{target_path}",
-              f"https://{ipns_key}.ipns.w3s.link{target_path}",
-              f"https://ipfs.io/ipns/{ipns_key}{target_path}"
-          ]
+          echo "Descargando lista directamente desde la red IPFS..."
+          # Obtener el archivo mediante P2P sin usar gateways web HTTP
+          ipfs cat "/ipns/$IPNS_KEY/data/listas/lista_iptv.m3u" > temporal.m3u || true
 
-          # Envolver las URLs en proxies públicos para evitar el bloqueo de IP de GitHub Actions
-          proxied_urls = []
-          for u in direct_urls:
-              proxied_urls.append(f"https://api.allorigins.win/raw?url={urllib.parse.quote(u)}")
-              proxied_urls.append(f"https://corsproxy.io/?{urllib.parse.quote(u)}")
+          # Detener el daemon
+          pkill ipfs || true
 
-          # Combinar todos los intentos (primero directas, luego proxies)
-          all_attempts = direct_urls + proxied_urls
-
-          for url in all_attempts:
-              try:
-                  print(f"Probando descarga desde: {url}")
-                  req = urllib.request.Request(
-                      url, 
-                      headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-                  )
-                  with urllib.request.urlopen(req, timeout=12) as response:
-                      content = response.read().decode("utf-8", errors="ignore")
-                      # Validar que sea una lista m3u real y no una página de error o HTML
-                      if "#EXT" in content and "<html" not in content.lower():
-                          m3u_content = content
-                          print(f"¡Éxito rotundo descargando desde: {url}!")
-                          break
-                      else:
-                          print("El contenido recibido no es una lista M3U válida.")
-              except Exception as e:
-                  print(f"Falló este intento: {e}")
-              time.sleep(0.5)
-
-          if not m3u_content:
-              raise RuntimeError("Error crítico: Ninguna pasarela ni proxy pudo obtener la lista M3U.")
+          # Validar que el archivo descargado sea una lista M3U real
+          if ! grep -q "#EXT" temporal.m3u; then
+            echo "Error: No se pudo recuperar la lista a través de la red IPFS."
+            exit 1
+          fi
 
           # Reemplazar la IP local por la IP de tu NAS
-          m3u_modificado = m3u_content.replace("http://127.0.0.1:6878", "http://192.168.18.197:6878")
-
-          with open("lista_nas.m3u", "w", encoding="utf-8") as f:
-              f.write(m3u_modificado)
-          print("Archivo lista_nas.m3u procesado y guardado con éxito.")
-          '
+          sed 's|http://127.0.0.1:6878|http://192.168.18.197:6878|g' temporal.m3u > lista_nas.m3u
+          echo "¡Lista transformada y guardada con éxito!"
 
       - name: Guardar cambios en GitHub
         run: |
