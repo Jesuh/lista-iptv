@@ -14,33 +14,33 @@ jobs:
 
       - name: Descargar, Transformar y Limpiar
         run: |
-          # Lista de gateways estables
-          GATEWAYS=(
-            "https://ipfs.io/ipns/k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb/data/listas/lista_iptv.m3u"
+          # Lista de endpoints directos y gateways IPFS/IPNS
+          URLS=(
+            "https://k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb.ipns.w3s.link/data/listas/lista_iptv.m3u"
+            "https://ipns.io/k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb/data/listas/lista_iptv.m3u"
+            "https://k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb.ipns.dweb.link/data/listas/lista_iptv.m3u"
             "https://gateway.pinata.cloud/ipns/k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb/data/listas/lista_iptv.m3u"
-            "https://cloudflare-ipfs.com/ipns/k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb/data/listas/lista_iptv.m3u"
-            "https://ipfs.eth.ar.zone/ipns/k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb/data/listas/lista_iptv.m3u"
           )
 
           SUCCESS=0
-          for url in "${GATEWAYS[@]}"; do
-            echo "Probando gateway: $url"
-            # --fail hace que curl ignore respuestas HTTP con error (404/500)
-            curl -sL --fail --max-time 15 -A "Mozilla/5.0" "$url" > temporal.m3u || true
+          for url in "${URLS[@]}"; do
+            echo "Probando descarga desde: $url"
+            curl -sL --max-time 20 -H "Accept: text/plain, */*" -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "$url" > temporal.m3u || true
             
+            # Comprobar si el archivo contiene etiquetas M3U reales
             if grep -q "#EXT" temporal.m3u; then
-              echo "¡Descarga correcta desde $url!"
+              echo "¡Descarga válida confirmada desde $url!"
               SUCCESS=1
               break
             fi
           done
 
           if [ $SUCCESS -eq 0 ]; then
-            echo "Error: Ningún gateway devolvió una lista válida."
+            echo "Error: Ningún gateway ha devuelto una lista M3U válida."
             exit 1
           fi
 
-          # Reemplazar la IP local por la IP de tu NAS
+          # Reemplazar la IP local por la IP de tu NAS (puerto 6878)
           sed 's|http://127.0.0.1:6878|http://192.168.18.197:6878|g' temporal.m3u > lista_nas.m3u
 
       - name: Guardar cambios en GitHub
