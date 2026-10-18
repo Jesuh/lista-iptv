@@ -14,7 +14,6 @@ jobs:
 
       - name: Instalar cliente IPFS (Kubo)
         run: |
-          # Descargar e instalar la herramienta oficial de IPFS
           wget -q https://dist.ipfs.tech/kubo/v0.27.0/kubo_v0.27.0_linux-amd64.tar.gz
           tar -xzf kubo_v0.27.0_linux-amd64.tar.gz
           sudo bash kubo/install.sh
@@ -24,20 +23,24 @@ jobs:
         run: |
           IPNS_KEY="k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb"
           
-          echo "Iniciando nodo IPFS local en segundo plano..."
+          echo "Iniciando nodo IPFS local..."
           ipfs daemon --offline &
           sleep 3
 
-          echo "Descargando lista directamente desde la red IPFS..."
-          # Obtener el archivo mediante P2P sin usar gateways web HTTP
-          ipfs cat "/ipns/$IPNS_KEY/data/listas/lista_iptv.m3u" > temporal.m3u || true
+          echo "Intentando descargar con límite de 25 segundos..."
+          # El comando timeout evita que se quede colgado para siempre si la red P2P no responde al instante
+          if timeout 25 ipfs cat "/ipns/$IPNS_KEY/data/listas/lista_iptv.m3u" > temporal.m3u; then
+            echo "¡Descarga P2P completada!"
+          else
+            echo "Aviso: La descarga P2P superó el tiempo límite."
+          fi
 
-          # Detener el daemon
+          # Apagar el daemon de IPFS de forma segura
           pkill ipfs || true
 
-          # Validar que el archivo descargado sea una lista M3U real
+          # Validar que el archivo descargado contenga canales M3U reales
           if ! grep -q "#EXT" temporal.m3u; then
-            echo "Error: No se pudo recuperar la lista a través de la red IPFS."
+            echo "Error: No se pudo obtener una lista M3U válida."
             exit 1
           fi
 
