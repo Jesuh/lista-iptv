@@ -12,40 +12,48 @@ jobs:
       - name: Checkout del repo
         uses: actions/checkout@v4
 
-      - name: Instalar cliente IPFS (Kubo)
+      # Usamos la acción oficial del Marketplace para instalar Kubo sin sufrir bloqueos de IP
+      - name: Instalar Kubo (IPFS Nativo)
+        uses: ipfs/setup-ipfs@v1
+        with:
+          ipfs_version: ^0.27.0
+
+      - name: Descargar por P2P Nativo y Transformar
         run: |
-          echo "Descargando Kubo con límite de tiempo..."
-          # --max-time 30 fuerza a que si en 30 segundos no descarga, cancele en vez de colgarse
-          curl -sL --max-time 30 -o kubo.tar.gz "https://dist.ipfs.tech/kubo/v0.27.0/kubo_v0.27.0_linux-amd64.tar.gz" || { echo "Error: La descarga de Kubo tardó demasiado."; exit 1; }
-          tar -xzf kubo.tar.gz
-          sudo bash kubo/install.sh
-          ipfs init --offline
+          python3 -c '
+          import subprocess
+          import time
 
-      - name: Descargar por red P2P y Transformar
-        run: |
-          IPNS_KEY="k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb"
-          
-          echo "Iniciando nodo IPFS local..."
-          ipfs daemon --offline &
-          sleep 3
+          ipns_key = "k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb"
+          target_file = f"/ipns/{ipns_key}/data/listas/lista_iptv.m3u"
+          m3u_content = None
 
-          echo "Descargando lista con límite de tiempo..."
-          if timeout 25 ipfs cat "/ipns/$IPNS_KEY/data/listas/lista_iptv.m3u" > temporal.m3u; then
-            echo "¡Descarga P2P completada!"
-          else
-            echo "Aviso: Tiempo límite de P2P alcanzado."
-          fi
+          print("Iniciando daemon de IPFS...")
+          daemon = subprocess.Popen(["ipfs", "daemon", "--offline"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+          time.sleep(3)
 
-          pkill ipfs || true
+          try:
+              print(f"Obteniendo archivo P2P: {target_file}")
+              # Timeout estricto de 30s al comando cat de ipfs
+              res = subprocess.run(["ipfs", "cat", target_file], capture_output=True, text=True, timeout=30)
+              if "#EXT" in res.stdout:
+                  m3u_content = res.stdout
+                  print("¡Lista M3U recuperada con éxito vía IPFS P2P!")
+          except Exception as e:
+              print(f"Aviso en consulta P2P: {e}")
+          finally:
+              daemon.terminate()
 
-          if ! grep -q "#EXT" temporal.m3u; then
-            echo "Error: No se pudo obtener una lista M3U válida."
-            exit 1
-          fi
+          if not m3u_content:
+              raise RuntimeError("Error crítico: No se pudo recuperar la lista M3U a través de IPFS.")
 
-          # Reemplazar la IP local por la IP de tu NAS
-          sed 's|http://127.0.0.1:6878|http://192.168.18.197:6878|g' temporal.m3u > lista_nas.m3u
-          echo "¡Lista transformada y guardada con éxito!"
+          # Reemplazar la IP local por la IP de tu NAS (puerto 6878)
+          m3u_modificado = m3u_content.replace("http://127.0.0.1:6878", "http://192.168.18.197:6878")
+
+          with open("lista_nas.m3u", "w", encoding="utf-8") as f:
+              f.write(m3u_modificado)
+          print("¡Archivo lista_nas.m3u guardado con éxito!")
+          '
 
       - name: Guardar cambios en GitHub
         run: |
