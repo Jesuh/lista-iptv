@@ -17,33 +17,45 @@ jobs:
           python3 -m pip install --upgrade pip
           pip install curl_cffi
 
-      - name: Descargar con emulación de navegador y Transformar
+      - name: Descargar lista en crudo con emulación de navegador y Transformar
         run: |
           python3 -c '
           from curl_cffi import requests
           import time
 
-          url = "https://k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb.ipns.inbrowser.link/data/listas/lista_iptv.m3u"
+          ipns_key = "k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb"
+          target_path = "/data/listas/lista_iptv.m3u"
           m3u_content = None
 
-          print(f"Conectando a la lista mediante emulación de navegador...")
-          for intento in range(3):
+          # Pasarelas oficiales IPFS que entregan texto plano usando la huella de navegador
+          gateways = [
+              f"https://ipfs.io/ipns/{ipns_key}{target_path}",
+              f"https://cloudflare-ipfs.com/ipns/{ipns_key}{target_path}",
+              f"https://{ipns_key}.ipns.dweb.link{target_path}"
+          ]
+
+          for url in gateways:
               try:
-                  # Impersonamos Chrome 120 para saltarnos barreras de pasarelas y Cloudflare
+                  print(f"Probando pasarela con emulación de navegador: {url}")
+                  # Impersonamos Chrome 120 para sortear cualquier filtro anti-bot
                   response = requests.get(url, impersonate="chrome120", timeout=20)
+                  print(f"Código HTTP recibido: {response.status_code}")
+                  
                   if response.status_code == 200:
                       content = response.text
-                      if "#EXT" in content:
+                      # Validar que sea un archivo M3U real y no una página web HTML
+                      if "#EXT" in content and "<html" not in content.lower():
                           m3u_content = content
-                          print("¡Descarga exitosa con huella de navegador!")
+                          print("¡Éxito rotundo descargando la lista M3U en crudo!")
                           break
-                  print(f"Intento {intento+1}: Código HTTP {response.status_code}")
+                      else:
+                          print("La respuesta es una página web HTML, buscando en la siguiente pasarela...")
               except Exception as e:
-                  print(f"Error en intento {intento+1}: {e}")
-              time.sleep(2)
+                  print(f"Falló la conexión con {url}: {e}")
+              time.sleep(1)
 
           if not m3u_content:
-              raise RuntimeError("Error crítico: No se pudo descargar la lista M3U.")
+              raise RuntimeError("Error crítico: Ninguna pasarela pudo entregar la lista M3U válida.")
 
           # Reemplazar la IP local por la IP de tu NAS (puerto 6878)
           m3u_modificado = m3u_content.replace("http://127.0.0.1:6878", "http://192.168.18.197:6878")
