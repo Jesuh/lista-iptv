@@ -12,37 +12,66 @@ jobs:
       - name: Checkout del repo
         uses: actions/checkout@v4
 
-      - name: Descargar, Transformar y Limpiar
+      - name: Descargar y Transformar con Python
         run: |
-          # Pasarelas optimizadas con cabeceras de API Trustless para evitar HTMLs
-          URLS=(
-            "https://k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb.ipns.cf-ipfs.com/data/listas/lista_iptv.m3u"
-            "https://ipns.eth.ar.zone/k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb/data/listas/lista_iptv.m3u"
-            "https://ipfs.io/ipns/k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb/data/listas/lista_iptv.m3u"
-            "https://4everland.io/ipns/k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb/data/listas/lista_iptv.m3u"
-          )
+          python3 -c '
+          import urllib.request
+          import json
 
-          SUCCESS=0
-          for url in "${URLS[@]}"; do
-            echo "Probando descarga desde: $url"
-            # Forzamos la cabecera Accept para pedir el archivo crudo y no HTML
-            curl -sL --max-time 20 -H "Accept: application/x-mpegurl, text/plain, */*" -A "Wget/1.21.3" "$url" > temporal.m3u || true
-            
-            # Verificamos si el archivo descargado contiene la cabecera de IPTV
-            if grep -q "#EXT" temporal.m3u; then
-              echo "¡Lista M3U válida descargada con éxito desde $url!"
-              SUCCESS=1
-              break
-            fi
-          done
+          ipns_key = "k2k4r8lm8tkmuxbc8lkmq1in3v0oya1p6pe9o5bu0hu30br5ko08k2gb"
+          m3u_content = None
 
-          if [ $SUCCESS -eq 0 ]; then
-            echo "Error: Ninguna pasarela devolvió el archivo de lista M3U."
-            exit 1
-          fi
+          # Método 1: Resolver IPNS mediante la API oficial de IPFS para obtener el enlace inmutable
+          try:
+              api_url = f"https://ipfs.io/api/v0/name/resolve?arg={ipns_key}"
+              print(f"Consultando API de IPFS: {api_url}")
+              req = urllib.request.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
+              with urllib.request.urlopen(req, timeout=15) as response:
+                  data = json.loads(response.read().decode())
+                  resolved_path = data.get("Path")
+                  print(f"IPNS resuelto correctamente a: {resolved_path}")
+                  if resolved_path:
+                      file_url = f"https://ipfs.io{resolved_path}/data/listas/lista_iptv.m3u"
+                      print(f"Descargando archivo inmutable desde: {file_url}")
+                      file_req = urllib.request.Request(file_url, headers={"User-Agent": "Mozilla/5.0"})
+                      with urllib.request.urlopen(file_req, timeout=15) as f_res:
+                          content = f_res.read().decode("utf-8", errors="ignore")
+                          if "#EXT" in content:
+                              m3u_content = content
+                              print("¡Lista M3U descargada con éxito mediante IPFS API!")
+          except Exception as e:
+              print(f"Aviso en método API IPFS: {e}")
+
+          # Método 2 (Respaldo): Si la API falla, probamos pasarelas alternativas directas
+          if not m3u_content:
+              print("Probando gateways de respaldo...")
+              alt_urls = [
+                  f"https://{ipns_key}.ipns.cf-ipfs.com/data/listas/lista_iptv.m3u",
+                  f"https://gateway.pinata.cloud/ipns/{ipns_key}/data/listas/lista_iptv.m3u"
+              ]
+              for url in alt_urls:
+                  try:
+                      print(f"Intentando con: {url}")
+                      req = urllib.request.Request(url, headers={"User-Agent": "Wget/1.21.3", "Accept": "text/plain"})
+                      with urllib.request.urlopen(req, timeout=15) as resp:
+                          content = resp.read().decode("utf-8", errors="ignore")
+                          if "#EXT" in content:
+                              m3u_content = content
+                              print(f"¡Descarga de respaldo exitosa desde {url}!")
+                              break
+                  except Exception as ex:
+                      print(f"Falló la pasarela: {ex}")
+
+          if not m3u_content:
+              raise RuntimeError("Error crítico: Ningún método pudo obtener una lista M3U válida.")
 
           # Reemplazar la IP local por la IP de tu NAS (puerto 6878)
-          sed 's|http://127.0.0.1:6878|http://192.168.18.197:6878|g' temporal.m3u > lista_nas.m3u
+          m3u_modificado = m3u_content.replace("http://127.0.0.1:6878", "http://192.168.18.197:6878")
+
+          with open("lista_nas.m3u", "w", encoding="utf-8") as f:
+              f.write(m3u_modificado)
+          print("Archivo lista_nas.m3u procesado y guardado correctamente.")
+          '
 
       - name: Guardar cambios en GitHub
         run: |
